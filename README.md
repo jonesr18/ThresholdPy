@@ -24,7 +24,7 @@ pip install thresholdpy
 Or install from source:
 
 ```bash
-git clone https://github.com/yourusername/thresholdpy.git
+git clone https://github.com/jonesr18/thresholdpy.git
 cd thresholdpy
 pip install -e .
 ```
@@ -317,14 +317,14 @@ print(threshold_comparison)
 
 ## Citation
 
-If you use ThresholdPy in your research, please cite:
+If you use ThresholdPy in  research, please cite:
 
 ```bibtex
-@software{thresholdpy2024,
+@software{thresholdpy2025,
   title={ThresholdPy: A Python adaptation of ThresholdR for CITE-seq denoising},
-  author={Your Name},
-  year={2024},
-  url={https://github.com/yourusername/thresholdpy}
+  author={Ross Jones},
+  year={2025},
+  url={https://github.com/jonesr18/thresholdpy}
 }
 ```
 
