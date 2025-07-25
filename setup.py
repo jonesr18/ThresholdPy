@@ -6,8 +6,8 @@ with open("README.md", "r", encoding="utf-8") as fh:
 setup(
     name="thresholdpy",
     version="0.1.0",
-    author="Your Name",
-    author_email="your.email@example.com",
+    author="Ross Jones",
+    author_email="jonesr18@gmail.com",
     description="A Python adaptation of ThresholdR for CITE-seq denoising with ScanPy integration",
     long_description=long_description,
     long_description_content_type="text/markdown",
@@ -52,8 +52,8 @@ setup(
     },
     keywords="cite-seq, single-cell, denoising, gaussian-mixture-model, scanpy",
     project_urls={
-        "Bug Reports": "https://github.com/yourusername/thresholdpy/issues",
-        "Source": "https://github.com/yourusername/thresholdpy",
+        "Bug Reports": "https://github.com/jonesr18/thresholdpy/issues",
+        "Source": "https://github.com/jonesr18/thresholdpy",
         "Documentation": "https://thresholdpy.readthedocs.io/",
     },
 )

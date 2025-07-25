@@ -10,7 +10,7 @@ readme = "README.md"
 requires-python = ">=3.8"
 license = {text = "MIT"}
 authors = [
-    {name = "Your Name", email = "your.email@example.com"},
+    {name = "Ross Jones", email = "jonesr18@gmail.com"},
 ]
 keywords = ["cite-seq", "single-cell", "denoising", "gaussian-mixture-model", "scanpy"]
 classifiers = [
@@ -51,10 +51,10 @@ docs = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/yourusername/thresholdpy"
-Repository = "https://github.com/yourusername/thresholdpy"
+Homepage = "https://github.com/jonesr18/thresholdpy"
+Repository = "https://github.com/jonesr18/thresholdpy"
 Documentation = "https://thresholdpy.readthedocs.io/"
-"Bug Reports" = "https://github.com/yourusername/thresholdpy/issues"
+"Bug Reports" = "https://github.com/jonesr18/thresholdpy/issues"
 
 [tool.black]
 line-length = 88
