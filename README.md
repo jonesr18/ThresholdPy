@@ -351,3 +351,4 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - Original ThresholdR package by MDMotlagh
 - ScanPy development team for the excellent single-cell analysis framework
 - scikit-learn for robust machine learning implementations
+- Claude Sonnet 4 for initial conversion from R to Python
