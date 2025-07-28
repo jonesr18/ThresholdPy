@@ -23,7 +23,7 @@ class TestThresholdPy:
         n_proteins = 5
         
         # Create base data
-        X = np.random.negative_binomial(3, 0.3, (n_cells, n_proteins))
+        X = np.random.negative_binomial(3, 0.3, (n_cells, n_proteins)).astype(float)
         
         # Add noise and signal structure
         for i in range(n_proteins):
@@ -37,12 +37,12 @@ class TestThresholdPy:
             X[expressing_cells, i] += np.random.exponential(5, len(expressing_cells))
         
         # Create AnnData object
-        adata = AnnData(X.astype(float))
+        adata = AnnData(X)
         adata.var_names = [f'Protein_{i}' for i in range(n_proteins)]
         adata.obs_names = [f'Cell_{i}' for i in range(n_cells)]
         
         # Add to layer as well
-        adata.layers['protein_raw'] = X.astype(float)
+        adata.layers['protein_raw'] = X.copy()
         
         return adata
     
@@ -215,7 +215,7 @@ class TestConvenienceFunctions:
         n_cells = 200
         n_proteins = 3
         
-        X = np.random.negative_binomial(3, 0.3, (n_cells, n_proteins))
+        X = np.random.negative_binomial(3, 0.3, (n_cells, n_proteins)).astype(float)
         
         for i in range(n_proteins):
             X[:, i] += np.random.exponential(1, n_cells)
@@ -224,10 +224,10 @@ class TestConvenienceFunctions:
             )
             X[expressing_cells, i] += np.random.exponential(3, len(expressing_cells))
         
-        adata = AnnData(X.astype(float))
+        adata = AnnData(X)
         adata.var_names = [f'Protein_{i}' for i in range(n_proteins)]
         adata.obs_names = [f'Cell_{i}' for i in range(n_cells)]
-        adata.layers['protein_raw'] = X.astype(float)
+        adata.layers['protein_raw'] = X.copy()
         
         return adata
     
