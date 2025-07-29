@@ -11,7 +11,7 @@ setup(
     description="A Python adaptation of ThresholdR for CITE-seq denoising with ScanPy integration",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/yourusername/thresholdpy",
+    url="https://github.com/jonesr18/thresholdpy",
     packages=find_packages(),
     classifiers=[
         "Development Status :: 4 - Beta",
