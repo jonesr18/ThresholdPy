@@ -393,7 +393,7 @@ class ThresholdPy:
         # Get fitted model and threshold
         gmm = self.fitted_models_[protein_name]
         threshold = self.thresholds_[protein_name]
-        stats = self.fit_stats_[protein_name]
+        fit_stats = self.fit_stats_[protein_name]
         
         # Create plot
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=figsize)
@@ -416,15 +416,15 @@ class ThresholdPy:
         x_range = np.linspace(log_values.min(), log_values.max(), 1000)
         
         for i in range(self.n_components):
-            mean = stats["means"][i]
+            mean = fit_stats["means"][i]
             if self.covariance_type == 'full':
-                std = np.sqrt(stats["covariances"][i][0, 0])
+                std = np.sqrt(fit_stats["covariances"][i][0, 0])
             elif self.covariance_type == 'diag':
-                std = np.sqrt(stats["covariances"][i][0])
+                std = np.sqrt(fit_stats["covariances"][i][0])
             else:
-                std = np.sqrt(stats["covariances"][i])
-            weight = stats["weights"][i]
-            
+                std = np.sqrt(fit_stats["covariances"][i])
+            weight = fit_stats["weights"][i]
+
             component_pdf = weight * stats.norm.pdf(x_range, mean, std)
             ax2.plot(x_range, component_pdf, 
                     label=f'Component {i+1} (w={weight:.2f})')
