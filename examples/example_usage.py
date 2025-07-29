@@ -366,56 +366,7 @@ def integration_with_scanpy_example():
     
     return adata_combined, threshold_model
 
-def main():
-    """Run all examples"""
-    print("ThresholdPy Example Usage")
-    print("=" * 50)
-    
-    # Basic usage
-    adata, model = basic_usage_example()
-    
-    # Advanced usage
-    adata_adv, model_adv = advanced_usage_example()
-    
-    # Visualization
-    visualization_example(adata_adv, model_adv)
-    
-    # Quality control
-    qc_stats = quality_control_example(adata)
-    
-    # Batch processing
-    samples, models, batch_comparison = batch_processing_example()
-    
-    # ScanPy integration
-    adata_combined, model_combined = integration_with_scanpy_example()
-    
-    print("\n" + "="*50)
-    print("ALL EXAMPLES COMPLETED SUCCESSFULLY!")
-    print("="*50)
-    
-    return {
-        'basic_data': adata,
-        'basic_model': model,
-        'advanced_data': adata_adv,
-        'advanced_model': model_adv,
-        'qc_stats': qc_stats,
-        'batch_samples': samples,
-        'batch_models': models,
-        'combined_data': adata_combined,
-        'combined_model': model_combined
-    }
-
-if __name__ == "__main__":
-    # Set up matplotlib for non-interactive use if needed
-    import matplotlib
-    matplotlib.use('Agg')  # Use non-interactive backend
-    
-    # Run examples
-    results = main()
-    
-    print("\nExample data and models are stored in the 'results' dictionary.")
-    print("Available keys:", list(results.keys()))
- create_realistic_citeseq_data(n_cells=2000, n_proteins=20):
+def create_realistic_citeseq_data(n_cells=2000, n_proteins=20):
     """
     Create realistic synthetic CITE-seq data with known structure.
     
@@ -573,4 +524,54 @@ def visualization_example(adata, model):
     
     return fig
 
-def
+def main():
+    """Run all examples"""
+    print("ThresholdPy Example Usage")
+    print("=" * 50)
+    
+    # Basic usage
+    adata, model = basic_usage_example()
+    
+    # Advanced usage
+    adata_adv, model_adv = advanced_usage_example()
+    
+    # Visualization
+    visualization_example(adata_adv, model_adv)
+    
+    # Quality control
+    qc_stats = quality_control_example(adata)
+    
+    # Batch processing
+    samples, models, batch_comparison = batch_processing_example()
+    
+    # ScanPy integration
+    adata_combined, model_combined = integration_with_scanpy_example()
+    
+    print("\n" + "="*50)
+    print("ALL EXAMPLES COMPLETED SUCCESSFULLY!")
+    print("="*50)
+    
+    return {
+        'basic_data': adata,
+        'basic_model': model,
+        'advanced_data': adata_adv,
+        'advanced_model': model_adv,
+        'qc_stats': qc_stats,
+        'batch_samples': samples,
+        'batch_models': models,
+        'combined_data': adata_combined,
+        'combined_model': model_combined
+    }
+
+if __name__ == "__main__":
+    # Set up matplotlib for non-interactive use if needed
+    import matplotlib
+    matplotlib.use('Agg')  # Use non-interactive backend
+    
+    # Run examples
+    results = main()
+    
+    print("\nExample data and models are stored in the 'results' dictionary.")
+    print("Available keys:", list(results.keys()))
+ 
+
