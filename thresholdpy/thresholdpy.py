@@ -228,24 +228,37 @@ class ThresholdPy:
         protein_data = self._validate_adata(adata, protein_layer)
         
         # Get protein names
+        # In many CITE-seq AnnData objects, modalities are separated by layers or by var columns.
+        # Some conventions use adata.var['feature_types'] or adata.var['modality'] with values like 'RNA' and 'Antibody Capture'/'protein'/'prot'.
+        # There is no universal standard, but 'feature_types' == 'Antibody Capture' or 'modality' == 'protein'/'prot' are common.
+        # Direct access via adata['rna'] or adata['prot'] is not standard AnnData API, but some wrappers (like MuData) use this.
+        # For vanilla AnnData, always check adata.var for a column indicating protein features.
+        found_col = False
         if protein_names is None:
-            if protein_layer is not None:
-                # Try to get feature names from var_names or use indices
-                all_proteins = adata.var_names.tolist()
-            else:
-                all_proteins = adata.var_names.tolist()
-        else:
-            all_proteins = protein_names
+            if hasattr(adata.var, "columns"):
+                for col in ["feature_types", "modality"]:
+                    if col in adata.var.columns:
+                        logger.info(f"Using '{col}' column to identify protein features")
+                        # 10x Genomics convention: 'Antibody Capture' for proteins
+                        protein_mask = adata.var[col].str.lower().isin(["antibody capture", "protein", "prot"])
+                        protein_names = adata.var_names[protein_mask].tolist()
+                        found_col = True
+                        break
+            if not found_col:
+                protein_names = adata.var_names.tolist() # Assume all features are proteins if no specific column found
         
         n_proteins = protein_data.shape[1]
-        if len(all_proteins) != n_proteins:
-            logger.warning(f"Protein names length ({len(all_proteins)}) doesn't match data ({n_proteins})")
-            all_proteins = [f"Protein_{i}" for i in range(n_proteins)]
-        
+        logger.info(f"Using {len(protein_names)} of {n_proteins} proteins")
+
+        # Removed this since it overwrites 'protein_names' input
+        # if len(protein_names) != n_proteins:
+            # logger.warning(f"Protein names length ({len(protein_names)}) doesn't match data ({n_proteins})")
+            # protein_names = [f"Protein_{i}" for i in range(n_proteins)]
+
         # Fit GMM for each protein
-        for i, protein_name in enumerate(all_proteins):
-            logger.info(f"Fitting GMM for {protein_name} ({i+1}/{len(all_proteins)})")
-            
+        for i, protein_name in enumerate(protein_names):
+            logger.info(f"Fitting GMM for {protein_name} ({i+1}/{len(protein_names)})")
+
             protein_values = protein_data[:, i]
             gmm, stats = self._fit_gmm_single_protein(protein_values, protein_name)
             
