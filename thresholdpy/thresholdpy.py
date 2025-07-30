@@ -431,20 +431,18 @@ class ThresholdPy:
 
         # Similar to _handle_mudata but for writing to mudata vs anndata
         if HAS_MUDATA and isinstance(adata, MuData):
-            if protein_layer is None:
+            if protein_modality is None:
                 # Try to find protein modality automatically
                 protein_modalities = [mod for mod in adata.mod if 'prot' in mod.lower() or 'protein' in mod.lower() or 'adt' in mod.lower()]
                 if not protein_modalities:
                     raise ValueError("Could not automatically determine protein modality. "
-                                   "Please specify protein_layer as the name of the protein modality.")
+                                   "Please specify protein_modality as the name of the protein modality.")
                 if len(protein_modalities) > 1:
                     logger.warning(f"Multiple potential protein modalities found: {protein_modalities}")
                 protein_modality = protein_modalities[0]
                 logger.info(f"Writing to protein modality: {protein_modality}")
-            elif protein_layer in adata.mod:
-                protein_modality = protein_layer
-            else:
-                raise ValueError(f"Modality '{protein_layer}' not found in MuData object")
+            elif protein_modality not in adata.mod:
+                raise ValueError(f"Modality '{protein_modality}' not found in MuData object")
             
             if output_layer in adata[protein_modality].layers:
                 raise ValueError(f"Output layer {output_layer} already exists. Use a different output_layer name to avoid overwriting.")
