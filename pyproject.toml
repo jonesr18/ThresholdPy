@@ -46,6 +46,9 @@ dev = [
     "flake8>=3.9",
     "mypy>=0.910",
 ]
+mudata = [
+    "mudata>=0.1.0",
+]
 docs = [
     "sphinx>=4.0",
     "sphinx-rtd-theme>=1.0",

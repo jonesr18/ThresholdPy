@@ -14,11 +14,18 @@ import seaborn as sns
 from sklearn.mixture import GaussianMixture
 from sklearn.preprocessing import StandardScaler
 from scipy import stats
-from typing import Optional, Dict, List, Tuple, Union
+from typing import Optional, Dict, List, Tuple, Union, Any
 import warnings
 import scanpy as sc
 from anndata import AnnData
 import logging
+
+# Try to import MuData for multi-modal data support
+try:
+    from mudata import MuData
+    HAS_MUDATA = True
+except ImportError:
+    HAS_MUDATA = False
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -59,40 +66,143 @@ class ThresholdPy:
         self.fitted_models_ = {}
         self.fit_stats_ = {}
         
-    def _validate_adata(self, adata: AnnData, protein_layer: Optional[str] = None) -> np.ndarray:
+    def _get_protein_mask(self, adata: AnnData) -> np.ndarray:
         """
-        Validate AnnData object and extract protein expression data.
+        Get a boolean mask for protein features in AnnData.var
         
         Parameters:
         -----------
         adata : AnnData
-            Annotated data object containing CITE-seq data
-        protein_layer : str, optional
-            Layer containing protein expression data. If None, uses .X
+            Annotated data object
             
         Returns:
         --------
+        protein_mask : np.ndarray
+            Boolean mask where True indicates protein features
+        """
+        if not hasattr(adata, 'var') or not hasattr(adata.var, 'columns'):
+            # If no var annotations, assume all features are proteins
+            return np.ones(adata.n_vars, dtype=bool)
+            
+        # Check common column names for protein annotations
+        for col in ["feature_types", "modality"]:
+            if col in adata.var.columns:
+                logger.info(f"Using '{col}' column to identify protein features")
+                return adata.var[col].astype(str).str.lower().isin(
+                    ["antibody capture", "protein", "prot", "adt"]
+                )
+                
+        # If no protein-specific columns found, assume all features are proteins
+        return np.ones(adata.n_vars, dtype=bool)
+    
+    def _validate_adata(self,
+                        adata: Any,
+                        protein_layer: Optional[str] = None,
+                        protein_names: Optional[List[str]] = None) -> Tuple[AnnData, np.ndarray]:
+        """
+        Validate and extract protein expression data from AnnData or MuData object.
+        
+        Parameters:
+        -----------
+        adata : Union[AnnData, MuData]
+            Annotated data object containing CITE-seq data
+        protein_layer : str, optional
+            Layer containing protein expression data. If None, uses .X.
+            For MuData, this can also be the name of the modality.
+        protein_names : list, optional
+            List of specific protein names to extract. If None, uses all protein features.
+            
+        Returns:
+        --------
+        adata : AnnData
+            The processed AnnData object (potentially subset to protein modality)
         protein_data : np.ndarray
             Protein expression matrix (cells x proteins)
         """
+
+        # Handle AnnData vs MuData objects if necessary
+        adata, protein_layer, was_mudata = self._handle_mudata(adata, protein_layer)
+        
+        # At this point, adata should be an AnnData object
         if not isinstance(adata, AnnData):
-            raise TypeError("Input must be an AnnData object")
-            
-        if protein_layer is not None:
-            if protein_layer not in adata.layers:
-                raise ValueError(f"Layer '{protein_layer}' not found in adata.layers")
-            protein_data = adata.layers[protein_layer]
-        else:
+            raise TypeError(f"Expected AnnData or MuData, got {type(adata).__name__}")
+        
+        # Get protein mask
+        self.protein_mask_ = self._get_protein_mask(adata)
+        
+        # Get protein data from the specified layer or .X as a default or mudata extraction
+        if was_mudata or protein_layer is None:
             protein_data = adata.X
+        else:
+            if protein_layer in adata.layers:
+                protein_data = adata.layers[protein_layer]
+            else:
+                raise ValueError(f"Layer '{protein_layer}' not found in AnnData object")
             
         if protein_data is None:
             raise ValueError("No protein expression data found")
             
-        # Convert sparse to dense if necessary
+        # Convert to dense array if sparse
         if hasattr(protein_data, 'toarray'):
             protein_data = protein_data.toarray()
+        
+        # Subset to specific protein names if provided
+        if protein_names is not None:
+            protein_mask = np.isin(adata.var_names, protein_names)
+            protein_data = protein_data[:, protein_mask]
+        # Otherwise subset to protein features if not all features are proteins
+        elif not np.all(self.protein_mask_):
+            protein_data = protein_data[:, self.protein_mask_]
+        
+        return adata, protein_data
+
+    def _handle_mudata(self, 
+                       adata: Any, 
+                       protein_layer: Optional[str] = None) -> Tuple[AnnData, str, bool]:
+        """
+        Handle MuData objects by extracting the protein modality.
+        
+        Parameters:
+        -----------
+        adata : Union[AnnData, MuData]
+            Annotated data object containing CITE-seq data, can be either AnnData or MuData
+        protein_layer : str, optional
+            Layer containing protein expression data. If None, uses .X.
+            For MuData, this can also be the name of the modality.
             
-        return protein_data
+        Returns:
+        --------
+        adata : AnnData
+            AnnData object containing protein expression data
+        protein_layer : str
+            Name of the protein layer (useful if inferred from mudata modalities)
+        was_mudata : bool
+            Whether the input was a MuData object
+        """
+        if HAS_MUDATA and isinstance(adata, MuData):
+            was_mudata = True
+            if protein_layer is None:
+                # Try to find protein modality automatically
+                protein_modalities = [mod for mod in adata.mod if 'prot' in mod.lower() or 'protein' in mod.lower() or 'adt' in mod.lower()]
+                if not protein_modalities:
+                    raise ValueError("Could not automatically determine protein modality. "
+                                   "Please specify protein_layer as the name of the protein modality.")
+                if len(protein_modalities) > 1:
+                    logger.warning(f"Multiple potential protein modalities found: {protein_modalities}")
+                protein_layer = protein_modalities[0]
+                logger.info(f"Using protein modality: {protein_layer}")
+                adata = adata[protein_layer]
+            elif protein_layer in adata.mod:
+                adata = adata[protein_layer]
+            else:
+                raise ValueError(f"Modality '{protein_layer}' not found in MuData object")
+        # Handle AnnData objects
+        elif isinstance(adata, AnnData):
+            was_mudata = False
+        else:
+            raise TypeError(f"Input must be an AnnData or MuData object, got {type(adata).__name__}")
+        
+        return adata, protein_layer, was_mudata
     
     def _fit_gmm_single_protein(self, 
                                protein_values: np.ndarray, 
@@ -200,22 +310,24 @@ class ThresholdPy:
         threshold = np.expm1(log_threshold)
         
         return threshold
-    
+
     def fit(self, 
-            adata: AnnData, 
+            adata: Union[AnnData, MuData], 
             protein_layer: Optional[str] = None,
             protein_names: Optional[List[str]] = None) -> 'ThresholdPy':
         """
-        Fit GMM models to all proteins and calculate thresholds.
+        Fit GMM models for each protein.
         
         Parameters:
         -----------
-        adata : AnnData
-            Annotated data object containing CITE-seq data
+        adata : Union[AnnData, MuData]
+            Annotated data object containing CITE-seq data. If MuData, protein_layer
+            can be used to specify the protein modality.
         protein_layer : str, optional
-            Layer containing protein expression data
+            Layer containing protein expression data. For MuData, this can be
+            the name of the protein modality.
         protein_names : list, optional
-            Specific proteins to analyze. If None, analyzes all
+            Specific proteins to analyze. If None, uses all proteins identified by feature annotations
             
         Returns:
         --------
@@ -225,35 +337,30 @@ class ThresholdPy:
         logger.info("Starting ThresholdPy fitting...")
         
         # Validate and extract data
-        protein_data = self._validate_adata(adata, protein_layer)
+        adata, protein_data = self._validate_adata(adata, protein_layer, protein_names)
         
-        # Get protein names
-        # In many CITE-seq AnnData objects, modalities are separated by layers or by var columns.
-        # Some conventions use adata.var['feature_types'] or adata.var['modality'] with values like 'RNA' and 'Antibody Capture'/'protein'/'prot'.
-        # There is no universal standard, but 'feature_types' == 'Antibody Capture' or 'modality' == 'protein'/'prot' are common.
-        # Direct access via adata['rna'] or adata['prot'] is not standard AnnData API, but some wrappers (like MuData) use this.
-        # For vanilla AnnData, always check adata.var for a column indicating protein features.
-        found_col = False
+        # Get protein names from var if not provided
         if protein_names is None:
-            if hasattr(adata.var, "columns"):
-                for col in ["feature_types", "modality"]:
-                    if col in adata.var.columns:
-                        logger.info(f"Using '{col}' column to identify protein features")
-                        # 10x Genomics convention: 'Antibody Capture' for proteins
-                        protein_mask = adata.var[col].str.lower().isin(["antibody capture", "protein", "prot"])
-                        protein_names = adata.var_names[protein_mask].tolist()
-                        found_col = True
-                        break
-            if not found_col:
-                protein_names = adata.var_names.tolist() # Assume all features are proteins if no specific column found
+            if hasattr(adata, 'var') and hasattr(adata.var, 'index'):
+                # Use feature names from the protein features only
+                if hasattr(self, 'protein_mask_'):
+                    protein_names = adata.var.index[self.protein_mask_].tolist()
+                else:
+                    protein_names = adata.var.index.tolist()
+            else:
+                # Fallback to generic names
+                protein_names = [f"Protein_{i+1}" for i in range(protein_data.shape[1])]
         
-        n_proteins = protein_data.shape[1]
-        logger.info(f"Using {len(protein_names)} of {n_proteins} proteins")
-
-        # Removed this since it overwrites 'protein_names' input
-        # if len(protein_names) != n_proteins:
-            # logger.warning(f"Protein names length ({len(protein_names)}) doesn't match data ({n_proteins})")
-            # protein_names = [f"Protein_{i}" for i in range(n_proteins)]
+        # Ensure we have the correct number of protein names
+        # - shouldn't be necessary anymore
+        # if len(protein_names) != protein_data.shape[1]:
+        #     logger.warning(
+        #         f"Number of protein names ({len(protein_names)}) doesn't match "
+        #         f"number of protein features ({protein_data.shape[1]}). Using default names."
+        #     )
+        #     protein_names = [f"Protein_{i+1}" for i in range(protein_data.shape[1])]
+            
+        logger.info(f"Fitting models for {len(protein_names)} of {protein_data.shape[1]} proteins")
 
         # Fit GMM for each protein
         for i, protein_name in enumerate(protein_names):
@@ -275,19 +382,21 @@ class ThresholdPy:
         return self
     
     def transform(self, 
-                  adata: AnnData, 
+                  adata: Union[AnnData, MuData], 
                   protein_layer: Optional[str] = None,
                   inplace: bool = True,
-                  output_layer: str = 'protein_denoised') -> Optional[AnnData]:
+                  output_layer: str = 'protein_denoised') -> Optional[Union[AnnData, MuData]]:
         """
         Apply thresholds to denoise protein expression data.
         
         Parameters:
         -----------
-        adata : AnnData
-            Annotated data object containing CITE-seq data
+        adata : Union[AnnData, MuData]
+            Annotated data object containing CITE-seq data. If MuData, protein_layer
+            can be used to specify the protein modality.
         protein_layer : str, optional
-            Layer containing protein expression data
+            Layer containing protein expression data. For MuData, this can be
+            the name of the protein modality.
         inplace : bool, default=True
             Whether to modify adata in place
         output_layer : str, default='protein_denoised'
@@ -295,18 +404,20 @@ class ThresholdPy:
             
         Returns:
         --------
-        adata_denoised : AnnData or None
+        adata_denoised : AnnData or MuData or None
             Denoised data (if inplace=False)
         """
         if not self.thresholds_:
             raise ValueError("Model not fitted. Call fit() first.")
         
         # Validate and extract data
-        protein_data = self._validate_adata(adata, protein_layer)
+        _, protein_data = self._validate_adata(adata, protein_layer)
         
         # Apply thresholds
-        denoised_data = protein_data.copy()
-        
+        # denoised_data = protein_data.copy()
+        denoised_data = np.full((protein_data.shape[0], len(self.protein_mask_)), np.nan) # Account for non-protein features
+        protein_idxs = np.where(self.protein_mask_)[0]
+
         protein_names = list(self.thresholds_.keys())
         for i, protein_name in enumerate(protein_names):
             if i >= protein_data.shape[1]:
@@ -315,30 +426,62 @@ class ThresholdPy:
             threshold = self.thresholds_[protein_name]
             if not np.isnan(threshold):
                 # Set values below threshold to 0
-                denoised_data[:, i] = np.where(
+                denoised_data[:, protein_idxs[i]] = np.where(
                     protein_data[:, i] < threshold, 0, protein_data[:, i]
                 )
+
+        # Similar to _handle_mudata but for writing to mudata vs anndata
+        if HAS_MUDATA and isinstance(adata, MuData):
+            if protein_layer is None:
+                # Try to find protein modality automatically
+                protein_modalities = [mod for mod in adata.mod if 'prot' in mod.lower() or 'protein' in mod.lower() or 'adt' in mod.lower()]
+                if not protein_modalities:
+                    raise ValueError("Could not automatically determine protein modality. "
+                                   "Please specify protein_layer as the name of the protein modality.")
+                if len(protein_modalities) > 1:
+                    logger.warning(f"Multiple potential protein modalities found: {protein_modalities}")
+                protein_modality = protein_modalities[0]
+                logger.info(f"Writing to protein modality: {protein_modality}")
+            elif protein_layer in adata.mod:
+                protein_modality = protein_layer
+            else:
+                raise ValueError(f"Modality '{protein_layer}' not found in MuData object")
+            
+            if output_layer in adata[protein_modality].layers:
+                logger.warning(f"Output layer {output_layer} already exists. Use a different output_layer name to avoid overwriting.")
+
+            if inplace:
+                adata[protein_modality].layers[output_layer] = denoised_data
+                return adata
+            else:
+                adata_copy = adata.copy()
+                adata_copy[protein_modality].layers[output_layer] = denoised_data
+                return adata_copy
         
-        if inplace:
-            adata.layers[output_layer] = denoised_data
-            return None
-        else:
-            adata_copy = adata.copy()
-            adata_copy.layers[output_layer] = denoised_data
-            return adata_copy
+        # Handle AnnData objects
+        elif isinstance(adata, AnnData):
+            if output_layer in adata.layers:
+                logger.warning(f"Output layer {output_layer} already exists. Use a different output_layer name to avoid overwriting.")
+            
+            if inplace:
+                adata.layers[output_layer] = denoised_data
+            else:
+                adata_copy = adata.copy()
+                adata_copy.layers[output_layer] = denoised_data
+                return adata_copy
     
     def fit_transform(self, 
-                     adata: AnnData, 
+                     adata: Union[AnnData, MuData], 
                      protein_layer: Optional[str] = None,
                      protein_names: Optional[List[str]] = None,
                      inplace: bool = True,
-                     output_layer: str = 'protein_denoised') -> Optional[AnnData]:
+                     output_layer: str = 'protein_denoised') -> Optional[Union[AnnData, MuData]]:
         """
         Fit GMM models and apply thresholds in one step.
         
         Parameters:
         -----------
-        adata : AnnData
+        adata : Union[AnnData, MuData]
             Annotated data object containing CITE-seq data
         protein_layer : str, optional
             Layer containing protein expression data
@@ -351,7 +494,7 @@ class ThresholdPy:
             
         Returns:
         --------
-        adata_denoised : AnnData or None
+        adata_denoised : AnnData or MuData or None
             Denoised data (if inplace=False)
         """
         self.fit(adata, protein_layer, protein_names)
@@ -359,7 +502,7 @@ class ThresholdPy:
     
     def plot_protein_distribution(self, 
                                  protein_name: str, 
-                                 adata: AnnData,
+                                 adata: Union[AnnData, MuData],
                                  protein_layer: Optional[str] = None,
                                  figsize: Tuple[int, int] = (10, 6)) -> plt.Figure:
         """
@@ -369,8 +512,8 @@ class ThresholdPy:
         -----------
         protein_name : str
             Name of protein to plot
-        adata : AnnData
-            Annotated data object
+        adata : Union[AnnData, MuData]
+            Annotated data object containing CITE-seq data
         protein_layer : str, optional
             Layer containing protein expression data
         figsize : tuple, default=(10, 6)
@@ -385,10 +528,10 @@ class ThresholdPy:
             raise ValueError(f"Protein {protein_name} not found in fitted models")
         
         # Get data
-        protein_data = self._validate_adata(adata, protein_layer)
-        protein_names = list(self.thresholds_.keys())
-        protein_idx = protein_names.index(protein_name)
-        protein_values = protein_data[:, protein_idx]
+        adata, protein_data = self._validate_adata(adata, protein_layer, protein_name)
+        # protein_names = list(self.thresholds_.keys())
+        # protein_idx = protein_names.index(protein_name)
+        # protein_values = protein_data[:, protein_idx]
         
         # Get fitted model and threshold
         gmm = self.fitted_models_[protein_name]
@@ -399,7 +542,7 @@ class ThresholdPy:
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=figsize)
         
         # Plot 1: Original distribution
-        valid_values = protein_values[protein_values > 0]
+        valid_values = protein_data[protein_data > 0]
         ax1.hist(valid_values, bins=50, density=True, alpha=0.7, color='lightblue')
         ax1.axvline(threshold, color='red', linestyle='--', 
                    label=f'Threshold: {threshold:.2f}')
@@ -482,22 +625,24 @@ class ThresholdPy:
 
 
 # Convenience functions for ScanPy integration
-def pp_threshold_proteins(adata: AnnData,
+def pp_threshold_proteins(adata: Union[AnnData, MuData],
                          protein_layer: Optional[str] = None,
                          protein_names: Optional[List[str]] = None,
                          n_components: int = 2,
                          inplace: bool = True,
                          output_layer: str = 'protein_denoised',
-                         copy: bool = False) -> Optional[AnnData]:
+                         copy: bool = False) -> Optional[Union[AnnData, MuData]]:
     """
     Preprocess protein data using ThresholdPy (scanpy-style function).
     
     Parameters:
     -----------
-    adata : AnnData
-        Annotated data object containing CITE-seq data
+    adata : Union[AnnData, MuData]
+        Annotated data object containing CITE-seq data. If MuData, protein_layer
+        can be used to specify the protein modality.
     protein_layer : str, optional
-        Layer containing protein expression data
+        Layer containing protein expression data. For MuData, this can be
+        the name of the protein modality.
     protein_names : list, optional
         Specific proteins to analyze
     n_components : int, default=2
@@ -511,7 +656,7 @@ def pp_threshold_proteins(adata: AnnData,
         
     Returns:
     --------
-    adata_denoised : AnnData or None
+    adata_denoised : AnnData or MuData or None
         Denoised data (if copy=True)
     """
     adata_work = adata.copy() if copy else adata

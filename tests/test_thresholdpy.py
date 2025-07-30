@@ -9,6 +9,13 @@ import scanpy as sc
 from anndata import AnnData
 import matplotlib.pyplot as plt
 
+# Try to import MuData
+try:
+    from mudata import MuData
+    HAS_MUDATA = True
+except ImportError:
+    HAS_MUDATA = False
+
 from thresholdpy import ThresholdPy, pp_threshold_proteins
 
 
@@ -45,7 +52,7 @@ class TestThresholdPy:
         adata.layers['protein_raw'] = X.copy()
         
         return adata
-    
+        
     def test_initialization(self):
         """Test ThresholdPy initialization"""
         model = ThresholdPy()
@@ -72,12 +79,16 @@ class TestThresholdPy:
         model = ThresholdPy()
         
         # Test with .X
-        protein_data = model._validate_adata(synthetic_data)
+        _, protein_data = model._validate_adata(synthetic_data)
         assert protein_data.shape == synthetic_data.X.shape
         
         # Test with layer
-        protein_data = model._validate_adata(synthetic_data, 'protein_raw')
+        _, protein_data = model._validate_adata(synthetic_data, 'protein_raw')
         assert protein_data.shape == synthetic_data.layers['protein_raw'].shape
+
+        # Test with specific protein
+        _, protein_data = model._validate_adata(synthetic_data, 'protein_raw', ['Protein_0'])
+        assert protein_data.flatten().shape == synthetic_data.layers['protein_raw'][:, 0].shape # flatten needed to force 1D in this case
         
         # Test error cases
         with pytest.raises(TypeError):
@@ -203,6 +214,126 @@ class TestThresholdPy:
         loaded_df = pd.read_csv(filepath)
         expected_df = model.get_threshold_summary()
         pd.testing.assert_frame_equal(loaded_df, expected_df)
+
+
+class TestMuDataCompatibility:
+    """Test MuData compatibility"""
+    
+    @pytest.fixture
+    def synthetic_mudata(self):
+        """Create a MuData object with RNA and protein modalities for testing"""
+        if not HAS_MUDATA:
+            pytest.skip("MuData not available")
+            
+        np.random.seed(42)
+        n_cells = 500
+        n_proteins = 5
+        n_genes = 100
+        
+        # Create a mock RNA modality
+        rna_data = np.random.negative_binomial(5, 0.1, (n_cells, n_genes))
+        
+        # Create AnnData for RNA
+        adata_rna = AnnData(rna_data)
+        adata_rna.var_names = [f'Gene_{i}' for i in range(n_genes)]
+        adata_rna.obs_names = [f'Cell_{i}' for i in range(n_cells)]
+        
+        # Create mock protein modality
+        X = np.random.negative_binomial(3, 0.3, (n_cells, n_proteins)).astype(float)
+        
+        # Add noise and signal structure
+        for i in range(n_proteins):
+            # Add noise component (all cells)
+            X[:, i] += np.random.exponential(1, n_cells)
+            
+            # Add signal component (subset of cells)
+            expressing_cells = np.random.choice(
+                n_cells, n_cells//3, replace=False
+            )
+            X[expressing_cells, i] += np.random.exponential(5, len(expressing_cells))
+        
+        # Create AnnData object
+        adata_protein = AnnData(X)
+        adata_protein.var_names = [f'Protein_{i}' for i in range(n_proteins)]
+        adata_protein.obs_names = [f'Cell_{i}' for i in range(n_cells)]
+        
+        # Add to layer as well
+        adata_protein.layers['protein_raw'] = X.copy()
+
+        # Create MuData with both modalities
+        mudata = MuData({
+            'rna': adata_rna,
+            'prot': adata_protein},
+            axis = 0
+        )
+        
+        return mudata
+    
+    def test_mudata_auto_detection(self, synthetic_mudata):
+        """Test automatic detection of protein modality in MuData"""
+        if not HAS_MUDATA:
+            pytest.skip("MuData not available")
+            
+        model = ThresholdPy()
+        model.fit(synthetic_mudata)
+        
+        # Should have processed all proteins
+        assert len(model.thresholds_) == synthetic_mudata['prot'].n_vars
+        
+        # Check that thresholds were calculated
+        for protein in synthetic_mudata['prot'].var_names:
+            assert protein in model.thresholds_
+    
+    def test_mudata_explicit_modality(self, synthetic_mudata):
+        """Test explicit specification of protein modality"""
+        if not HAS_MUDATA:
+            pytest.skip("MuData not available")
+            
+        model = ThresholdPy()
+        model.fit(synthetic_mudata, protein_layer='prot')
+        
+        # Should have processed all proteins
+        assert len(model.thresholds_) == synthetic_mudata['prot'].n_vars
+    
+    def test_mudata_transform(self, synthetic_mudata):
+        """Test transform with MuData input"""
+        if not HAS_MUDATA:
+            pytest.skip("MuData not available")
+            
+        model = ThresholdPy()
+        model.fit(synthetic_mudata)
+        
+        # Test inplace transformation
+        model.transform(synthetic_mudata, inplace=True)
+        assert 'protein_denoised' in synthetic_mudata['prot'].layers
+        
+        # Test copy transformation
+        mudata_copy = model.transform(synthetic_mudata, inplace=False)
+        assert isinstance(mudata_copy, type(synthetic_mudata))
+        assert 'protein_denoised' in mudata_copy['prot'].layers
+    
+    def test_pp_function_with_mudata(self, synthetic_mudata):
+        """Test the convenience function with MuData"""
+        if not HAS_MUDATA:
+            pytest.skip("MuData not available")
+            
+        # Test with automatic modality detection
+        result = pp_threshold_proteins(
+            synthetic_mudata,
+            n_components=2,
+            copy=True
+        )
+        assert isinstance(result, type(synthetic_mudata))
+        assert 'protein_denoised' in result['prot'].layers
+        
+        # Test with explicit modality
+        result = pp_threshold_proteins(
+            synthetic_mudata,
+            protein_layer='prot',
+            n_components=2,
+            copy=True
+        )
+        assert 'protein_denoised' in result['prot'].layers
 
 
 class TestConvenienceFunctions:
