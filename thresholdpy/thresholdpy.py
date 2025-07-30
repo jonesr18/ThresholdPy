@@ -447,8 +447,8 @@ class ThresholdPy:
                 raise ValueError(f"Modality '{protein_layer}' not found in MuData object")
             
             if output_layer in adata[protein_modality].layers:
-                logger.warning(f"Output layer {output_layer} already exists. Use a different output_layer name to avoid overwriting.")
-
+                raise ValueError(f"Output layer {output_layer} already exists. Use a different output_layer name to avoid overwriting.")
+            
             if inplace:
                 adata[protein_modality].layers[output_layer] = denoised_data
                 return adata
@@ -460,7 +460,7 @@ class ThresholdPy:
         # Handle AnnData objects
         elif isinstance(adata, AnnData):
             if output_layer in adata.layers:
-                logger.warning(f"Output layer {output_layer} already exists. Use a different output_layer name to avoid overwriting.")
+                raise ValueError(f"Output layer {output_layer} already exists. Use a different output_layer name to avoid overwriting.")
             
             if inplace:
                 adata.layers[output_layer] = denoised_data

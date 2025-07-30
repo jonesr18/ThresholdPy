@@ -135,7 +135,15 @@ class TestThresholdPy:
         model = ThresholdPy()
         model.fit(synthetic_data)
         
-        # Test inplace transformation
+        # Test copy transformation
+        adata_copy = model.transform(synthetic_data, inplace=False)
+        assert isinstance(adata_copy, AnnData)
+        assert 'protein_denoised' in adata_copy.layers
+
+        with pytest.raises(ValueError, match="already exists"):
+            model.transform(synthetic_data, output_layer='protein_raw', inplace=False)
+        
+        # Test inplace transformation - done second so that 'protein_denoised' layer is not added twice
         model.transform(synthetic_data, inplace=True)
         assert 'protein_denoised' in synthetic_data.layers
         
@@ -143,11 +151,6 @@ class TestThresholdPy:
         original_zeros = np.sum(synthetic_data.X == 0)
         denoised_zeros = np.sum(synthetic_data.layers['protein_denoised'] == 0)
         assert denoised_zeros >= original_zeros
-        
-        # Test copy transformation
-        adata_copy = model.transform(synthetic_data, inplace=False)
-        assert isinstance(adata_copy, AnnData)
-        assert 'protein_denoised' in adata_copy.layers
     
     def test_transform_without_fit(self, synthetic_data):
         """Test that transform raises error without fitting"""
@@ -303,14 +306,14 @@ class TestMuDataCompatibility:
         model = ThresholdPy()
         model.fit(synthetic_mudata)
         
-        # Test inplace transformation
-        model.transform(synthetic_mudata, inplace=True)
-        assert 'protein_denoised' in synthetic_mudata['prot'].layers
-        
         # Test copy transformation
         mudata_copy = model.transform(synthetic_mudata, inplace=False)
         assert isinstance(mudata_copy, type(synthetic_mudata))
         assert 'protein_denoised' in mudata_copy['prot'].layers
+        
+        # Test inplace transformation - done second so that 'protein_denoised' layer is not added twice
+        model.transform(synthetic_mudata, inplace=True)
+        assert 'protein_denoised' in synthetic_mudata['prot'].layers
     
     def test_pp_function_with_mudata(self, synthetic_mudata):
         """Test the convenience function with MuData"""
