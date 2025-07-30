@@ -290,7 +290,7 @@ class TestMuDataCompatibility:
             pytest.skip("MuData not available")
             
         model = ThresholdPy()
-        model.fit(synthetic_mudata, protein_layer='prot')
+        model.fit(synthetic_mudata, protein_modality='prot')
         
         # Should have processed all proteins
         assert len(model.thresholds_) == synthetic_mudata['prot'].n_vars
@@ -329,7 +329,7 @@ class TestMuDataCompatibility:
         # Test with explicit modality
         result = pp_threshold_proteins(
             synthetic_mudata,
-            protein_layer='prot',
+            protein_modality='prot',
             n_components=2,
             copy=True
         )
