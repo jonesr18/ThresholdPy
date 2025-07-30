@@ -533,10 +533,7 @@ class ThresholdPy:
             raise ValueError(f"Protein {protein_name} not found in fitted models")
         
         # Get data
-        adata, protein_data = self._validate_adata(adata, protein_layer, protein_name, protein_modality)
-        # protein_names = list(self.thresholds_.keys())
-        # protein_idx = protein_names.index(protein_name)
-        # protein_values = protein_data[:, protein_idx]
+        _, protein_data = self._validate_adata(adata, protein_layer, protein_name, protein_modality)
         
         # Get fitted model and threshold
         gmm = self.fitted_models_[protein_name]
@@ -636,8 +633,7 @@ def pp_threshold_proteins(adata: Union[AnnData, MuData],
                          protein_modality: Optional[str] = None,
                          n_components: int = 2,
                          inplace: bool = True,
-                         output_layer: str = 'protein_denoised',
-                         copy: bool = False) -> Optional[Union[AnnData, MuData]]:
+                         output_layer: str = 'protein_denoised') -> Optional[Union[AnnData, MuData]]:
     """
     Preprocess protein data using ThresholdPy (scanpy-style function).
     
@@ -658,20 +654,17 @@ def pp_threshold_proteins(adata: Union[AnnData, MuData],
         Whether to modify adata in place
     output_layer : str, default='protein_denoised'
         Name of output layer for denoised data
-    copy : bool, default=False
-        Return a copy instead of writing to adata
         
     Returns:
     --------
     adata_denoised : AnnData or MuData or None
-        Denoised data (if copy=True)
+        Denoised data (a copy of adata input if inplace=False)
     """
-    adata_work = adata.copy() if copy else adata
-    
+
     # Initialize and fit ThresholdPy
     threshold_model = ThresholdPy(n_components=n_components)
-    threshold_model.fit_transform(
-        adata_work, 
+    adata_denoised = threshold_model.fit_transform(
+        adata, 
         protein_layer=protein_layer,
         protein_names=protein_names,
         protein_modality=protein_modality,
@@ -680,9 +673,12 @@ def pp_threshold_proteins(adata: Union[AnnData, MuData],
     )
     
     # Store model in uns for later access
-    adata_work.uns['threshold_model'] = threshold_model
-    
-    return adata_work if copy else None
+    if inplace:
+        adata.uns['threshold_model'] = threshold_model
+        return adata
+    else:
+        adata_denoised.uns['threshold_model'] = threshold_model
+        return adata_denoised
 
 
 # Example usage and testing
@@ -717,7 +713,7 @@ if __name__ == "__main__":
     
     # Apply ThresholdPy
     print("Applying ThresholdPy to synthetic data...")
-    pp_threshold_proteins(adata, copy=False)
+    pp_threshold_proteins(adata, inplace=True)
     
     # Get results
     threshold_model = adata.uns['threshold_model']

@@ -4,7 +4,7 @@ ThresholdPy: A Python adaptation of ThresholdR for CITE-seq denoising with ScanP
 
 from .thresholdpy import ThresholdPy, pp_threshold_proteins
 
-__version__ = "0.1.3"
+__version__ = "0.1.4"
 __author__ = "Ross Jones"
 __email__ = "jonesr18@gmail.com"
 

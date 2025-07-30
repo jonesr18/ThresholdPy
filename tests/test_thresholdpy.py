@@ -139,11 +139,12 @@ class TestThresholdPy:
         adata_copy = model.transform(synthetic_data, inplace=False)
         assert isinstance(adata_copy, AnnData)
         assert 'protein_denoised' in adata_copy.layers
+        assert 'protein_denoised' not in synthetic_data.layers
 
         with pytest.raises(ValueError, match="already exists"):
             model.transform(synthetic_data, output_layer='protein_raw', inplace=False)
         
-        # Test inplace transformation - done second so that 'protein_denoised' layer is not added twice
+        # Test inplace transformation
         model.transform(synthetic_data, inplace=True)
         assert 'protein_denoised' in synthetic_data.layers
         
@@ -320,23 +321,24 @@ class TestMuDataCompatibility:
         if not HAS_MUDATA:
             pytest.skip("MuData not available")
             
-        # Test with automatic modality detection
+        # Test with automatic modality detection and adata copying
         result = pp_threshold_proteins(
             synthetic_mudata,
             n_components=2,
-            copy=True
+            inplace=False
         )
         assert isinstance(result, type(synthetic_mudata))
+        assert 'protein_denoised' not in synthetic_mudata['prot'].layers
         assert 'protein_denoised' in result['prot'].layers
         
-        # Test with explicit modality
-        result = pp_threshold_proteins(
+        # Test with explicit modality and inplace editing
+        pp_threshold_proteins(
             synthetic_mudata,
             protein_modality='prot',
             n_components=2,
-            copy=True
+            inplace=True
         )
-        assert 'protein_denoised' in result['prot'].layers
+        assert 'protein_denoised' in synthetic_mudata['prot'].layers
 
 
 class TestConvenienceFunctions:
@@ -369,16 +371,15 @@ class TestConvenienceFunctions:
         """Test preprocessing function with inplace=True"""
         original_shape = synthetic_data.X.shape
         
-        result = pp_threshold_proteins(synthetic_data, inplace=True, copy=False)
+        pp_threshold_proteins(synthetic_data, inplace=True)
         
-        assert result is None  # Should return None for inplace
         assert 'protein_denoised' in synthetic_data.layers
         assert synthetic_data.layers['protein_denoised'].shape == original_shape
         assert 'threshold_model' in synthetic_data.uns
     
     def test_pp_threshold_proteins_copy(self, synthetic_data):
-        """Test preprocessing function with copy=True"""
-        result = pp_threshold_proteins(synthetic_data, copy=True)
+        """Test preprocessing function with inplace=False"""
+        result = pp_threshold_proteins(synthetic_data, inplace=False)
         
         assert isinstance(result, AnnData)
         assert 'protein_denoised' in result.layers
