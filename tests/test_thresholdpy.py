@@ -194,7 +194,7 @@ class TestThresholdPy:
         model = ThresholdPy()
         model.fit(synthetic_data)
         
-        fig = model.plot_protein_distribution('Protein_0', synthetic_data, transforms = ['log1p', 'sqrt', 'none'])
+        fig = model.plot_protein_distribution('Protein_0', synthetic_data, scales = ['log1p', 'sqrt', 'none'])
         assert isinstance(fig, plt.Figure)
         
         # Check that plot has expected structure
