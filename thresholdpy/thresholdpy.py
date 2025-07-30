@@ -201,7 +201,8 @@ class ThresholdPy:
     
     def _fit_gmm_single_protein(self, 
                                protein_values: np.ndarray, 
-                               protein_name: str) -> Tuple[GaussianMixture, Dict]:
+                               protein_name: str,
+                               transform: Optional[str] = 'none') -> Tuple[GaussianMixture, Dict]:
         """
         Fit GMM to a single protein's expression values.
         
@@ -211,6 +212,8 @@ class ThresholdPy:
             Expression values for one protein
         protein_name : str
             Name of the protein
+        transform : str, default='log1p'
+            Transformation to apply to data before fitting GMM
             
         Returns:
         --------
@@ -226,8 +229,15 @@ class ThresholdPy:
             logger.warning(f"Insufficient non-zero values for {protein_name}: {len(valid_values)}")
             return None, {"converged": False, "n_valid": len(valid_values)}
         
-        # Log transform to make data more Gaussian-like
-        log_values = np.log1p(valid_values).reshape(-1, 1)
+        # Transform data
+        if transform == None or transform.lower() == 'none':
+            transf_values = valid_values.reshape(-1, 1)
+        elif transform.lower() == 'log1p':
+            transf_values = np.log1p(valid_values).reshape(-1, 1)
+        elif transform.lower() == 'sqrt':
+            transf_values = np.sqrt(valid_values).reshape(-1, 1)
+        else:
+            raise ValueError(f"Unknown transform: {transform}")
         
         # Fit GMM
         gmm = GaussianMixture(
@@ -238,12 +248,12 @@ class ThresholdPy:
         )
         
         try:
-            gmm.fit(log_values)
+            gmm.fit(transf_values)
             
             # Calculate statistics
-            aic = gmm.aic(log_values)
-            bic = gmm.bic(log_values)
-            log_likelihood = gmm.score(log_values)
+            aic = gmm.aic(transf_values)
+            bic = gmm.bic(transf_values)
+            log_likelihood = gmm.score(transf_values)
             
             stats = {
                 "converged": gmm.converged_,
@@ -262,7 +272,10 @@ class ThresholdPy:
             logger.error(f"Failed to fit GMM for {protein_name}: {str(e)}")
             return None, {"converged": False, "error": str(e)}
     
-    def _calculate_threshold(self, gmm: GaussianMixture, stats: Dict) -> float:
+    def _calculate_threshold(self, 
+                             gmm: GaussianMixture, 
+                             stats: Dict, 
+                             transform: Optional[str] = None) -> float:
         """
         Calculate the threshold separating noise and signal components.
         
@@ -272,6 +285,8 @@ class ThresholdPy:
             Fitted GMM model
         stats : dict
             Fitting statistics
+        transform : str, optional
+            Data transformation applied before fitting GMM. Options are 'none', 'log1p', 'sqrt'.
             
         Returns:
         --------
@@ -299,10 +314,16 @@ class ThresholdPy:
             noise_std = np.sqrt(stats["covariances"][noise_idx])
         
         # Calculate threshold as mean + 2*std of noise component (95% confidence)
-        log_threshold = noise_mean + 2 * noise_std
+        threshold = noise_mean + 2 * noise_std
         
         # Convert back to original scale
-        threshold = np.expm1(log_threshold)
+        match transform:
+            case 'log1p':
+                threshold = np.expm1(threshold)
+            case 'sqrt':
+                threshold = threshold**2
+            case _:
+                threshold = threshold
         
         return threshold
 
@@ -310,7 +331,8 @@ class ThresholdPy:
             adata: Union[AnnData, MuData], 
             protein_layer: Optional[str] = None,
             protein_names: Optional[List[str]] = None,
-            protein_modality: Optional[str] = None) -> 'ThresholdPy':
+            protein_modality: Optional[str] = None,
+            transform: Optional[str] = 'none') -> 'ThresholdPy':
         """
         Fit GMM models for each protein.
         
@@ -364,10 +386,10 @@ class ThresholdPy:
             logger.info(f"Fitting GMM for {protein_name} ({i+1}/{len(protein_names)})")
 
             protein_values = protein_data[:, i]
-            gmm, stats = self._fit_gmm_single_protein(protein_values, protein_name)
+            gmm, stats = self._fit_gmm_single_protein(protein_values, protein_name, transform = transform)
             
             if gmm is not None:
-                threshold = self._calculate_threshold(gmm, stats)
+                threshold = self._calculate_threshold(gmm, stats, transform = transform)
                 self.thresholds_[protein_name] = threshold
                 self.fitted_models_[protein_name] = gmm
                 self.fit_stats_[protein_name] = stats
@@ -400,6 +422,8 @@ class ThresholdPy:
             Whether to modify adata in place
         output_layer : str, default='protein_denoised'
             Name of output layer for denoised data
+        transform : str, optional
+            Data transformation to apply before fitting GMM. Options are 'none', 'log1p', 'sqrt'.
             
         Returns:
         --------
@@ -473,7 +497,8 @@ class ThresholdPy:
                      protein_names: Optional[List[str]] = None,
                      protein_modality: Optional[str] = None,
                      inplace: bool = True,
-                     output_layer: str = 'protein_denoised') -> Optional[Union[AnnData, MuData]]:
+                     output_layer: str = 'protein_denoised',
+                     transform: Optional[str] = 'none') -> Optional[Union[AnnData, MuData]]:
         """
         Fit GMM models and apply thresholds in one step.
         
@@ -492,13 +517,15 @@ class ThresholdPy:
             Whether to modify adata in place
         output_layer : str, default='protein_denoised'
             Name of output layer for denoised data
+        transform : str, optional
+            Data transformation to apply before fitting GMM. Options are 'none', 'log1p', 'sqrt'.
             
         Returns:
         --------
         adata_denoised : AnnData or MuData or None
             Denoised data (if inplace=False)
         """
-        self.fit(adata, protein_layer, protein_names, protein_modality)
+        self.fit(adata, protein_layer, protein_names, protein_modality, transform = transform)
         return self.transform(adata, protein_layer, protein_modality, inplace, output_layer)
     
     def plot_protein_distribution(self, 
@@ -506,7 +533,8 @@ class ThresholdPy:
                                  adata: Union[AnnData, MuData],
                                  protein_layer: Optional[str] = None,
                                  protein_modality: Optional[str] = None,
-                                 figsize: Tuple[int, int] = (10, 6)) -> plt.Figure:
+                                 transforms: Optional[List[str]] = ['none'],
+                                 figsize: Optional[Tuple[int, int]] = None) -> plt.Figure:
         """
         Plot protein distribution with fitted GMM and threshold.
         
@@ -521,8 +549,10 @@ class ThresholdPy:
             Layer containing protein expression data. If None, uses .X.
         protein_modality : str, optional
             Name of the protein modality in MuData. If None, uses the first protein modality found.
-        figsize : tuple, default=(10, 6)
+        figsize : tuple, default=(5*len(transforms), 6)
             Figure size
+        transforms : list, optional
+            Data transformation(s) for plots. Options are 'none', 'log1p', 'sqrt'.
             
         Returns:
         --------
@@ -541,45 +571,46 @@ class ThresholdPy:
         fit_stats = self.fit_stats_[protein_name]
         
         # Create plot
-        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=figsize)
-        
-        # Plot 1: Original distribution
-        valid_values = protein_data[protein_data > 0]
-        ax1.hist(valid_values, bins=50, density=True, alpha=0.7, color='lightblue')
-        ax1.axvline(threshold, color='red', linestyle='--', 
-                   label=f'Threshold: {threshold:.2f}')
-        ax1.set_xlabel('Expression Level')
-        ax1.set_ylabel('Density')
-        ax1.set_title(f'{protein_name} - Original Scale')
-        ax1.legend()
-        
-        # Plot 2: Log-transformed with GMM components
-        log_values = np.log1p(valid_values)
-        ax2.hist(log_values, bins=50, density=True, alpha=0.7, color='lightblue')
-        
-        # Plot GMM components
-        x_range = np.linspace(log_values.min(), log_values.max(), 1000)
-        
-        for i in range(self.n_components):
-            mean = fit_stats["means"][i]
-            if self.covariance_type == 'full':
-                std = np.sqrt(fit_stats["covariances"][i][0, 0])
-            elif self.covariance_type == 'diag':
-                std = np.sqrt(fit_stats["covariances"][i][0])
-            else:
-                std = np.sqrt(fit_stats["covariances"][i])
-            weight = fit_stats["weights"][i]
+        if figsize is None:
+            figsize = (5*len(transforms), 6)
+        fig, axs = plt.subplots(1, len(transforms), figsize=figsize)
+        if len(transforms) == 1:
+            axs = [axs] # ensure list for iteration
 
-            component_pdf = weight * stats.norm.pdf(x_range, mean, std)
-            ax2.plot(x_range, component_pdf, 
-                    label=f'Component {i+1} (w={weight:.2f})')
+        # Plot 1: Original distribution
+        # valid_values = protein_data[protein_data > 0]
+        for transf, ax in zip(transforms, axs):
+            match transf:
+                case 'log1p':
+                    transf_data = np.log1p(protein_data)
+                case 'sqrt':
+                    transf_data = np.sqrt(protein_data)
+                case 'none':
+                    transf_data = protein_data.copy()
+            ax.hist(transf_data, bins=50, density=True, alpha=0.7, color='lightblue')
+            ax.axvline(threshold, color='red', linestyle='--', 
+                    label=f'Threshold: {threshold:.2f}')
+            ax.set_xlabel('Expression Level')
+            ax.set_ylabel('Density')
+            ax.set_title(f'{protein_name} - Transf: {transf}')
+            ax.legend()
         
-        ax2.axvline(np.log1p(threshold), color='red', linestyle='--',
-                   label=f'Threshold (log): {np.log1p(threshold):.2f}')
-        ax2.set_xlabel('Log(Expression + 1)')
-        ax2.set_ylabel('Density')
-        ax2.set_title(f'{protein_name} - Log Scale with GMM')
-        ax2.legend()
+            # Plot GMM components
+            x_range = np.linspace(transf_data.min(), transf_data.max(), 1000)
+            
+            for i in range(self.n_components):
+                mean = fit_stats["means"][i]
+                if self.covariance_type == 'full':
+                    std = np.sqrt(fit_stats["covariances"][i][0, 0])
+                elif self.covariance_type == 'diag':
+                    std = np.sqrt(fit_stats["covariances"][i][0])
+                else:
+                    std = np.sqrt(fit_stats["covariances"][i])
+                weight = fit_stats["weights"][i]
+
+                component_pdf = weight * stats.norm.pdf(x_range, mean, std)
+                ax.plot(x_range, component_pdf, 
+                        label=f'Component {i+1} (w={weight:.2f})')
         
         plt.tight_layout()
         return fig
@@ -633,7 +664,8 @@ def pp_threshold_proteins(adata: Union[AnnData, MuData],
                          protein_modality: Optional[str] = None,
                          n_components: int = 2,
                          inplace: bool = True,
-                         output_layer: str = 'protein_denoised') -> Optional[Union[AnnData, MuData]]:
+                         output_layer: str = 'protein_denoised',
+                         transform: Optional[str] = 'none') -> Optional[Union[AnnData, MuData]]:
     """
     Preprocess protein data using ThresholdPy (scanpy-style function).
     
@@ -654,7 +686,9 @@ def pp_threshold_proteins(adata: Union[AnnData, MuData],
         Whether to modify adata in place
     output_layer : str, default='protein_denoised'
         Name of output layer for denoised data
-        
+    transform : str, optional
+        Data transformation to apply before fitting GMM. Options are 'none', 'log1p', 'sqrt'.
+    
     Returns:
     --------
     adata_denoised : AnnData or MuData or None
@@ -669,7 +703,8 @@ def pp_threshold_proteins(adata: Union[AnnData, MuData],
         protein_names=protein_names,
         protein_modality=protein_modality,
         inplace=inplace,
-        output_layer=output_layer
+        output_layer=output_layer,
+        transform = transform
     )
     
     # Store model in uns for later access

@@ -194,11 +194,11 @@ class TestThresholdPy:
         model = ThresholdPy()
         model.fit(synthetic_data)
         
-        fig = model.plot_protein_distribution('Protein_0', synthetic_data)
+        fig = model.plot_protein_distribution('Protein_0', synthetic_data, transforms = ['log1p', 'sqrt', 'none'])
         assert isinstance(fig, plt.Figure)
         
         # Check that plot has expected structure
-        assert len(fig.axes) == 2  # Two subplots
+        assert len(fig.axes) == 3  # Three subplots
         
         # Test error for non-existent protein
         with pytest.raises(ValueError, match="not found in fitted models"):

@@ -5,7 +5,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setup(
     name="thresholdpy",
-    version="0.1.4",
+    version="0.1.5",
     author="Ross Jones",
     author_email="jonesr18@gmail.com",
     description="A Python adaptation of ThresholdR for CITE-seq denoising with ScanPy integration",
