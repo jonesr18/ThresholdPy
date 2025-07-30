@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "thresholdpy"
-version = "0.1.1"
+version = "0.1.2"
 description = "A Python adaptation of ThresholdR for CITE-seq denoising with ScanPy integration"
 readme = "README.md"
 requires-python = ">=3.8"
@@ -14,7 +14,7 @@ authors = [
 ]
 keywords = ["cite-seq", "single-cell", "denoising", "gaussian-mixture-model", "scanpy"]
 classifiers = [
-    "Development Status :: 4 - Beta",
+    "Development Status :: 3 - Alpha",
     "Intended Audience :: Science/Research",
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
