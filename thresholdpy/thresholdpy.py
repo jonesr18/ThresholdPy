@@ -422,8 +422,6 @@ class ThresholdPy:
             Whether to modify adata in place
         output_layer : str, default='protein_denoised'
             Name of output layer for denoised data
-        transform : str, optional
-            Data transformation to apply before fitting GMM. Options are 'none', 'log1p', 'sqrt'.
             
         Returns:
         --------
@@ -449,6 +447,7 @@ class ThresholdPy:
             threshold = self.thresholds_[protein_name]
             if not np.isnan(threshold):
                 # Set values below threshold to 0
+                # Don't need to transform the threshold as it was stored in the original data scale
                 denoised_data[:, protein_idxs[i]] = np.where(
                     protein_data[:, i] < threshold, 0, protein_data[:, i]
                 )
