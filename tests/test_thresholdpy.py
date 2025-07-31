@@ -450,7 +450,7 @@ class TestEdgeCases:
         adata.var_names = ['Zero_Protein', 'Normal_Protein']
         
         model = ThresholdPy()
-        model.fit(adata)
+        model.fit(adata, scale='log1p')
         
         # Should handle zero protein gracefully
         assert len(model.thresholds_) == 2
@@ -466,7 +466,7 @@ class TestEdgeCases:
         adata.var_names = ['Sparse_Protein']
         
         model = ThresholdPy()
-        model.fit(adata)
+        model.fit(adata, scale='log1p')
         
         # Should handle insufficient data
         assert len(model.thresholds_) == 1

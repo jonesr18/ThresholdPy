@@ -222,14 +222,16 @@ class ThresholdPy:
         stats : dict
             Fitting statistics
         """
-        # Remove zero/negative values and reshape for sklearn
-        valid_values = protein_values[protein_values > 0]
-        
+        # Scale data and reshape for sklearn
+        if scale in ['log1p', 'sqrt']:
+            valid_values = protein_values[protein_values > 0]
+        else:
+            valid_values = protein_values
+
         if len(valid_values) < 10:
             logger.warning(f"Insufficient non-zero values for {protein_name}: {len(valid_values)}")
             return None, {"converged": False, "n_valid": len(valid_values)}
-        
-        # Transform data
+
         match scale.lower():
             case 'none':
                 scaled_values = valid_values.reshape(-1, 1)
@@ -258,7 +260,7 @@ class ThresholdPy:
             
             stats = {
                 "converged": gmm.converged_,
-                "n_valid": len(valid_values),
+                "n_valid": len(protein_values),
                 "aic": aic,
                 "bic": bic,
                 "log_likelihood": log_likelihood,
